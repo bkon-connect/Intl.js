@@ -24,11 +24,21 @@ import {
 var Intl = {},
 
     tzHelper = {
-        canonicalize: (tz) => 'UTC',
-        validate: (tz) => toLatinUpperCase(tz) === 'UTC',
-        localize: (ts, tz) => ts,
-        abbr: (ts, tz) => 'UTC',
-        dst: (ts, tz) => false
+        canonicalize: function (tz) {
+            return 'UTC';
+        },
+        validate: function (tz) {
+            return toLatinUpperCase(tz) === 'UTC';
+        },
+        localize: function (ts, tz) {
+            return ts;
+        },
+        abbr: function (ts, tz) {
+            return 'UTC';
+        },
+        dst: function (ts, tz) {
+            return false;
+        }
     },
 
     realDefineProp = (function () {
