@@ -21,9 +21,15 @@ import {
     createDateTimeFormats
 } from "./cldr";
 
-var zt = require('zt');
-
 var Intl = {},
+
+    tzHelper = {
+        canonicalize: (tz) => 'UTC',
+        validate: (tz) => toLatinUpperCase(tz) === 'UTC',
+        localize: (ts, tz) => ts,
+        abbr: (ts, tz) => 'UTC',
+        dst: (ts, tz) => false
+    },
 
     realDefineProp = (function () {
         var sentinel = {};
@@ -388,18 +394,11 @@ function /* 6.3.1 */IsWellFormedCurrencyCode(currency) {
  * of the IANA Time Zone Database.
  */
 function /* 6.4.1 */IsValidTimeZoneName (tz) {
-    try {
-        // HACK: will throw if zone doesn't exist
-        zt.abbr(Date.now(), toLatinUpperCase(tz));
-        // The abstract operation returns true if timeZone, converted to upper
-        // case as described in 6.1, is equal to one of the Zone or Link names
-        // of the IANA Time Zone Database, converted to upper case as described
-        // in 6.1.
-        return true;
-    } catch (err) {
-        // It returns false otherwise.
-        return false;
-    }
+    // The abstract operation returns true if timeZone, converted to upper
+    // case as described in 6.1, is equal to one of the Zone or Link names
+    // of the IANA Time Zone Database, converted to upper case as described
+    // in 6.1. It returns false otherwise.
+    return tzHelper.validate(tz);
 }
 
 /**
@@ -414,7 +413,7 @@ function /* 6.4.2 */CanonicalizeTimeZoneName (tz) {
         //    Database such that timeZone, converted to upper case as described
         //    in 6.1, is equal to ianaTimeZone, converted to upper case as
         //    described in 6.1.
-        ianaTimeZone = zt.canonicalize(toLatinUpperCase(tz));
+        ianaTimeZone = tzHelper.canonicalize(toLatinUpperCase(tz));
 
     // 2. If ianaTimeZone is a Link name, then let ianaTimeZone be the
     //    corresponding Zone name as specified in the "backward" file of the
@@ -2509,7 +2508,7 @@ function FormatDateTime(dateTimeFormat, x) {
                         if (f === 'long') {
                             fv = internal['[[timeZone]]'];
                         } else if (f === 'short') {
-                            fv = zt.abbr(x, internal['[[timeZone]]']);
+                            fv = tzHelper.abbr(x, internal['[[timeZone]]']);
                         } else {
                             fv = '';
                         }
@@ -2557,7 +2556,7 @@ function ToLocalTime(date, calendar, timeZone) {
     //    bound by the restrictions on the use of best available information on time zones
     //    for local time zone adjustment and daylight saving time adjustment imposed by
     //    ES5, 15.9.1.7 and 15.9.1.8.
-    var d = zt(new Date(date), timeZone || 'UTC'),
+    var d = new Date(tzHelper.localize(date, timeZone || 'UTC')),
         m = 'getUTC';
 
     // 2. Return a Record with fields [[weekday]], [[era]], [[year]], [[month]], [[day]],
@@ -2572,7 +2571,7 @@ function ToLocalTime(date, calendar, timeZone) {
         '[[hour]]'   : d[m + 'Hours'](),
         '[[minute]]' : d[m + 'Minutes'](),
         '[[second]]' : d[m + 'Seconds'](),
-        '[[inDST]]'  : zt.dst(date, timeZone || 'UTC')
+        '[[inDST]]'  : tzHelper.dst(date, timeZone || 'UTC')
     });
 }
 
@@ -2822,6 +2821,17 @@ function addLocaleData (data, tag) {
         dateTimeFormatProtoInitialised = true;
     }
 }
+
+/**
+ * Can't really ship a single script with data for hundreds of timezones, so we provide
+ * this __setTzHelper method as a means for the developer to add the data on an
+ * as-needed basis
+ */
+defineProperty(Intl, '__setTzHelper', {
+    value: function (helper) {
+        tzHelper = helper;
+    }
+});
 
 // Helper functions
 // ================
