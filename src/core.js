@@ -21,6 +21,8 @@ import {
     createDateTimeFormats
 } from "./cldr";
 
+var zt = require('zt');
+
 var Intl = {},
 
     realDefineProp = (function () {
@@ -375,6 +377,65 @@ function /* 6.3.1 */IsWellFormedCurrencyCode(currency) {
 
     // 5. Return true
     return true;
+}
+
+// Sect 6.4 Time Zone Names
+// ========================
+
+/**
+ * The IsValidTimeZoneName abstract operation verifies that the timeZone
+ * argument (which must be a String value) represents a valid Zone or Link name
+ * of the IANA Time Zone Database.
+ */
+function /* 6.4.1 */IsValidTimeZoneName (tz) {
+    try {
+        // HACK: will throw if zone doesn't exist
+        zt.abbr(Date.now(), toLatinUpperCase(tz));
+        // The abstract operation returns true if timeZone, converted to upper
+        // case as described in 6.1, is equal to one of the Zone or Link names
+        // of the IANA Time Zone Database, converted to upper case as described
+        // in 6.1.
+        return true;
+    } catch (err) {
+        // It returns false otherwise.
+        return false;
+    }
+}
+
+/**
+ * The CanonicalizeTimeZoneName abstract operation returns the canonical and
+ * case-regularized form of the timeZone argument (which must be a String value
+ * that is a valid time zone name as verified by the IsValidTimeZoneName
+ * abstract operation). The following steps are taken:
+ */
+function /* 6.4.2 */CanonicalizeTimeZoneName (tz) {
+    var
+        // 1. Let ianaTimeZone be the Zone or Link name of the IANA Time Zone
+        //    Database such that timeZone, converted to upper case as described
+        //    in 6.1, is equal to ianaTimeZone, converted to upper case as
+        //    described in 6.1.
+        ianaTimeZone = zt.canonicalize(toLatinUpperCase(tz));
+
+    // 2. If ianaTimeZone is a Link name, then let ianaTimeZone be the
+    //    corresponding Zone name as specified in the "backward" file of the
+    //    IANA Time Zone Database.
+    // TODO
+
+    // 3. If ianaTimeZone is "Etc/UTC" or "Etc/GMT", then return "UTC".
+    if (ianaTimeZone === 'Etc/UTC' || ianaTimeZone === 'Etc/GMT') return 'UTC';
+
+    // 4. Return ianaTimeZone.
+    return ianaTimeZone;
+}
+
+/**
+ * The DefaultTimeZone abstract operation returns a String value representing
+ * the valid (6.4.1) and canonicalized (6.4.2) time zone name for the host
+ * environment’s current time zone.
+ */
+function /* 6.4.3 */DefaultTimeZone () {
+    // TODO: make configurable
+    return 'UTC';
 }
 
 // Sect 9.2 Abstract Operations
@@ -1771,8 +1832,7 @@ function/* 12.1.1.1 */InitializeDateTimeFormat (dateTimeFormat, locales, options
     // Create an object whose props can be used to restore the values of RegExp props
         regexpState = createRegExpRestore();
 
-    // 1. If dateTimeFormat has an [[initializedIntlObject]] internal property with
-    //    value true, throw a TypeError exception.
+    // 1. If dateTimeFormat.[[initializedIntlObject]] is true, throw a TypeError exception.
     if (internal['[[initializedIntlObject]]'] === true)
         throw new TypeError('`this` object has already been initialized as an Intl object');
 
@@ -1785,156 +1845,144 @@ function/* 12.1.1.1 */InitializeDateTimeFormat (dateTimeFormat, locales, options
         }
     });
 
-    // 2. Set the [[initializedIntlObject]] internal property of numberFormat to true.
+    // 2. Set dateTimeFormat.[[initializedIntlObject]] to true.
     internal['[[initializedIntlObject]]'] = true;
 
     var
-    // 3. Let requestedLocales be the result of calling the CanonicalizeLocaleList
-    //    abstract operation (defined in 9.2.1) with argument locales.
+    // 3. Let requestedLocales be CanonicalizeLocaleList(locales).
         requestedLocales = CanonicalizeLocaleList(locales),
 
-    // 4. Let options be the result of calling the ToDateTimeOptions abstract
-    //    operation (defined below) with arguments options, "any", and "date".
+    // 4. ReturnIfAbrupt(requestedLocales),
+    // 5. Let options be ToDateTimeOptions(options, "any", "date").
         options = ToDateTimeOptions(options, 'any', 'date'),
 
-    // 5. Let opt be a new Record.
+    // 6. ReturnIfAbrupt(options).
+    // 7. Let opt be a new Record.
         opt = new Record();
 
-    // 6. Let matcher be the result of calling the GetOption abstract operation
-    //    (defined in 9.2.9) with arguments options, "localeMatcher", "string", a List
-    //    containing the two String values "lookup" and "best fit", and "best fit".
+    // 8. Let matcher be GetOption(options, "localeMatcher", "string",
+    //    «"lookup", "best fit"», "best fit").
         matcher = GetOption(options, 'localeMatcher', 'string', new List('lookup', 'best fit'), 'best fit');
 
-    // 7. Set opt.[[localeMatcher]] to matcher.
+    // 9. ReturnIfAbrupt(matcher).
+    // 10. Set opt.[[localeMatcher]] to matcher.
     opt['[[localeMatcher]]'] = matcher;
 
     var
-    // 8. Let DateTimeFormat be the standard built-in object that is the initial
-    //    value of Intl.DateTimeFormat.
         DateTimeFormat = internals.DateTimeFormat, // This is what we *really* need
 
-    // 9. Let localeData be the value of the [[localeData]] internal property of
-    //    DateTimeFormat.
+    // 11. Let localeData be the value of %DateTimeFormat%.[[localeData]].
         localeData = DateTimeFormat['[[localeData]]'],
 
-    // 10. Let r be the result of calling the ResolveLocale abstract operation
-    //     (defined in 9.2.5) with the [[availableLocales]] internal property of
-    //      DateTimeFormat, requestedLocales, opt, the [[relevantExtensionKeys]]
-    //      internal property of DateTimeFormat, and localeData.
+    // 12. Let r be ResolveLocale(%DateTimeFormat%.[[availableLocales]],
+    //    requestedLocales, opt, %DateTimeFormat%.[[relevantExtensionKeys]], localeData).
         r = ResolveLocale(DateTimeFormat['[[availableLocales]]'], requestedLocales,
                 opt, DateTimeFormat['[[relevantExtensionKeys]]'], localeData);
 
-    // 11. Set the [[locale]] internal property of dateTimeFormat to the value of
-    //     r.[[locale]].
+    // 13. Set dateTimeFormat.[[locale]] to the value of r.[[locale]].
     internal['[[locale]]'] = r['[[locale]]'];
 
-    // 12. Set the [[calendar]] internal property of dateTimeFormat to the value of
-    //     r.[[ca]].
+    // 14. Set dateTimeFormat.[[calendar]] to the value of r.[[ca]].
     internal['[[calendar]]'] = r['[[ca]]'];
 
-    // 13. Set the [[numberingSystem]] internal property of dateTimeFormat to the value of
-    //     r.[[nu]].
+    // 15. Set dateTimeFormat.[[numberingSystem]] to the value of r.[[nu]].
     internal['[[numberingSystem]]'] = r['[[nu]]'];
 
     // The specification doesn't tell us to do this, but it's helpful later on
     internal['[[dataLocale]]'] = r['[[dataLocale]]'];
 
     var
-    // 14. Let dataLocale be the value of r.[[dataLocale]].
+    // 16. Let dataLocale be the value of r.[[dataLocale]].
         dataLocale = r['[[dataLocale]]'],
 
-    // 15. Let tz be the result of calling the [[Get]] internal method of options with
-    //     argument "timeZone".
+    // 17. Let tz be Get(options, "timeZone").
         tz = options.timeZone;
 
-    // 16. If tz is not undefined, then
+    // 18. ReturnIfAbrupt(tz).
+    // 19. If tz is not undefined, then
     if (tz !== undefined) {
         // a. Let tz be ToString(tz).
-        // b. Convert tz to upper case as described in 6.1.
-        //    NOTE: If an implementation accepts additional time zone values, as permitted
-        //          under certain conditions by the Conformance clause, different casing
-        //          rules apply.
-        tz = toLatinUpperCase(tz);
-
-        // c. If tz is not "UTC", then throw a RangeError exception.
-        // ###TODO: accept more time zones###
-        if (tz !== 'UTC')
-            throw new RangeError('timeZone is not supported.');
+        // b. ReturnIfAbrupt(tz).
+        // c. If the result of IsValidTimeZoneName(tz) is false, then
+        if (!IsValidTimeZoneName(tz)) {
+            // i. Throw a RangeError exception.
+            throw new RangeError('invalid timeZoneName');
+        }
+        // d. Let tz be CanonicalizeTimeZoneName(tz).
+        tz = CanonicalizeTimeZoneName(tz);
     }
+    // 20. Else,
+    else
+        // a. Let tz be DefaultTimeZone().
+        tz = DefaultTimeZone();
 
-    // 17. Set the [[timeZone]] internal property of dateTimeFormat to tz.
+    // 21. Set dateTimeFormat.[[timeZone]] to tz.
     internal['[[timeZone]]'] = tz;
 
-    // 18. Let opt be a new Record.
+    // 22. Let opt be a new Record.
     opt = new Record();
 
-    // 19. For each row of Table 3, except the header row, do:
+    // 23. For each row of Table 3, except the header row, do:
     for (var prop in dateTimeComponents) {
         if (!hop.call(dateTimeComponents, prop))
             continue;
 
         var
-        // 20. Let prop be the name given in the Property column of the row.
-        // 21. Let value be the result of calling the GetOption abstract operation,
-        //     passing as argument options, the name given in the Property column of the
-        //     row, "string", a List containing the strings given in the Values column of
-        //     the row, and undefined.
+        // a. Let prop be the name given in the Property column of the row.
+        // b. Let value be GetOption(options, prop, "string", «the strings
+        //    given in the Values column of the row», undefined).
             value = GetOption(options, prop, 'string', dateTimeComponents[prop]);
 
-        // 22. Set opt.[[<prop>]] to value.
+        // c. ReturnIfAbrupt(value).
+        // d. Set opt.[[<prop>]] to value.
         opt['[['+prop+']]'] = value;
     }
 
     var
         // Assigned a value below
         bestFormat,
+        FormatMatcher,
 
-        // 23. Let dataLocaleData be the result of calling the [[Get]] internal method of
-        //     localeData with argument dataLocale.
+        // 24. Let dataLocaleData be Get(localeData, dataLocale).
         dataLocaleData = localeData[dataLocale],
 
-        // 24. Let formats be the result of calling the [[Get]] internal method of
-        //     dataLocaleData with argument "formats".
+        // 25. Let formats be Get(dataLocaleData, "formats").
         //     Note: we process the CLDR formats into the spec'd structure
         formats = ToDateTimeFormats(dataLocaleData.formats),
 
-        // 25. Let matcher be the result of calling the GetOption abstract operation with
-        //     arguments options, "formatMatcher", "string", a List containing the two String
-        //     values "basic" and "best fit", and "best fit".
+        // 26. Let matcher be GetOption(options, "formatMatcher", "string",
+        //    «"basic", "best fit"», "best fit").
         matcher = GetOption(options, 'formatMatcher', 'string', new List('basic', 'best fit'), 'best fit');
 
     // Optimization: caching the processed formats as a one time operation by
     // replacing the initial structure from localeData
     dataLocaleData.formats = formats;
 
-    // 26. If matcher is "basic", then
+    // 27. ReturnIfAbrupt(matcher).
+    // 28. If matcher is "basic", then
     if (matcher === 'basic')
-        // 27. Let bestFormat be the result of calling the BasicFormatMatcher abstract
-        //     operation (defined below) with opt and formats.
-        bestFormat = BasicFormatMatcher(opt, formats);
+        // a. Let FormatMatcher be the abstract operation BasicFormatMatcher.
+        FormatMatcher = BasicFormatMatcher;
 
-    // 28. Else
+    // 29. Else
     else
-        // 29. Let bestFormat be the result of calling the BestFitFormatMatcher
-        //     abstract operation (defined below) with opt and formats.
-        bestFormat = BestFitFormatMatcher(opt, formats);
+        // a. Let FormatMatcher be the abstract operation BestFitFormatMatcher.
+        FormatMatcher = BestFitFormatMatcher;
 
-    // 30. For each row in Table 3, except the header row, do
+    // 30. Let bestFormat be FormatMatcher(opt, formats).
+    bestFormat = FormatMatcher(opt, formats);
+
+    // 31. For each row in Table 3, except the header row, do
     for (var prop in dateTimeComponents) {
         if (!hop.call(dateTimeComponents, prop))
             continue;
 
         // a. Let prop be the name given in the Property column of the row.
-        // b. Let pDesc be the result of calling the [[GetOwnProperty]] internal method of
-        //    bestFormat with argument prop.
-        // c. If pDesc is not undefined, then
-        if (hop.call(bestFormat, prop)) {
-            var
-            // i. Let p be the result of calling the [[Get]] internal method of bestFormat
-            //    with argument prop.
-                p = bestFormat[prop];
-
-            // ii. Set the [[<prop>]] internal property of dateTimeFormat to p.
+        // b. Let p be Get(bestFormat, prop).
+        var p = bestFormat[prop];
+        // c. If p not undefined, then
+        if (p !== undefined) {
+            // i. Set dateTimeFormat.[[<prop>]] to p.
             internal['[['+prop+']]'] = p;
         }
     }
@@ -1943,55 +1991,51 @@ function/* 12.1.1.1 */InitializeDateTimeFormat (dateTimeFormat, locales, options
         // Assigned a value below
         pattern,
 
-    // 31. Let hr12 be the result of calling the GetOption abstract operation with
-    //     arguments options, "hour12", "boolean", undefined, and undefined.
+    // 32. Let hr12 be GetOption(options, "hour12", "boolean", undefined, undefined).
         hr12 = GetOption(options, 'hour12', 'boolean'/*, undefined, undefined*/);
 
-    // 32. If dateTimeFormat has an internal property [[hour]], then
+    // 33. ReturnIfAbrupt(hr12).
+    // 34. If dateTimeFormat has an internal slot [[hour]], then
     if (internal['[[hour]]']) {
-        // a. If hr12 is undefined, then let hr12 be the result of calling the [[Get]]
-        //    internal method of dataLocaleData with argument "hour12".
-        hr12 = hr12 === undefined ? dataLocaleData.hour12 : hr12;
+        // a. If hr12 is undefined, then
+        if (hr12 === undefined)
+            // i. Let hr12 be Get(dataLocaleData, "hour12").
+            hr12 = dataLocaleData.hour12;
 
-        // b. Set the [[hour12]] internal property of dateTimeFormat to hr12.
+        // b. Set dateTimeFormat.[[hour12]] to hr12.
         internal['[[hour12]]'] = hr12;
 
         // c. If hr12 is true, then
         if (hr12 === true) {
             var
-            // i. Let hourNo0 be the result of calling the [[Get]] internal method of
-            //    dataLocaleData with argument "hourNo0".
+            // i. Let hourNo0 be Get(dataLocaleData, "hourNo0").
                 hourNo0 = dataLocaleData.hourNo0;
 
-            // ii. Set the [[hourNo0]] internal property of dateTimeFormat to hourNo0.
+            // ii. Set dateTimeFormat.[[hourNo0]] to hourNo0.
             internal['[[hourNo0]]'] = hourNo0;
 
-            // iii. Let pattern be the result of calling the [[Get]] internal method of
-            //      bestFormat with argument "pattern12".
+            // iii. Let pattern be Get(bestFormat, "pattern12").
             pattern = bestFormat.pattern12;
         }
 
         // d. Else
         else
-            // i. Let pattern be the result of calling the [[Get]] internal method of
-            //    bestFormat with argument "pattern".
+            // i. Let pattern be Get(bestFormat, "pattern").
             pattern = bestFormat.pattern;
     }
 
-    // 33. Else
+    // 35. Else
     else
-        // a. Let pattern be the result of calling the [[Get]] internal method of
-        //    bestFormat with argument "pattern".
+        // a. Let pattern be Get(bestFormat, "pattern").
         pattern = bestFormat.pattern;
 
-    // 34. Set the [[pattern]] internal property of dateTimeFormat to pattern.
+    // 36. Set dateTimeFormat.[[pattern]] to pattern.
     internal['[[pattern]]'] = pattern;
 
-    // 35. Set the [[boundFormat]] internal property of dateTimeFormat to undefined.
+    // 37. Set dateTimeFormat.[[boundFormat]] to undefined.
     internal['[[boundFormat]]'] = undefined;
 
-    // 36. Set the [[initializedDateTimeFormat]] internal property of dateTimeFormat to
-    //     true.
+    // 38. Set dateTimeFormat.[[initializedDateTimeFormat]] to true.
     internal['[[initializedDateTimeFormat]]'] = true;
 
     // In ES3, we need to pre-bind the format() function
@@ -2001,7 +2045,7 @@ function/* 12.1.1.1 */InitializeDateTimeFormat (dateTimeFormat, locales, options
     // Restore the RegExp properties
     regexpState.exp.test(regexpState.input);
 
-    // Return the newly initialised object
+    // 39. ReturndateTimeFormat.
     return dateTimeFormat;
 }
 
@@ -2357,26 +2401,21 @@ function FormatDateTime(dateTimeFormat, x) {
     // Creating restore point for properties on the RegExp object... please wait
         regexpState = createRegExpRestore(),
 
-    // 2. Let locale be the value of the [[locale]] internal property of dateTimeFormat.
+    // 2. Let locale be the value of dateTimeFormat.[[locale]].
         locale = internal['[[locale]]'],
 
-    // 3. Let nf be the result of creating a new NumberFormat object as if by the
-    // expression new Intl.NumberFormat([locale], {useGrouping: false}) where
-    // Intl.NumberFormat is the standard built-in constructor defined in 11.1.3.
+    // 3. Let nf be Construct(%NumberFormat%, «[locale], {useGrouping: false}»).
         nf = new Intl.NumberFormat([locale], {useGrouping: false}),
 
-    // 4. Let nf2 be the result of creating a new NumberFormat object as if by the
-    // expression new Intl.NumberFormat([locale], {minimumIntegerDigits: 2, useGrouping:
-    // false}) where Intl.NumberFormat is the standard built-in constructor defined in
-    // 11.1.3.
+    // 4. ReturnIfAbrupt(nf).
+    // 5. Let nf2 be Construct(%NumberFormat%, «[locale], {minimumIntegerDigits: 2, useGrouping: false}»).
         nf2 = new Intl.NumberFormat([locale], {minimumIntegerDigits: 2, useGrouping: false}),
 
-    // 5. Let tm be the result of calling the ToLocalTime abstract operation (defined
-    // below) with x, the value of the [[calendar]] internal property of dateTimeFormat,
-    // and the value of the [[timeZone]] internal property of dateTimeFormat.
+    // 6. ReturnIfAbrupt(nf2).
+    // 7. Let tm be ToLocalTime(x, dateTimeFormat.[[calendar]], dateTimeFormat.[[timeZone]]).
         tm = ToLocalTime(x, internal['[[calendar]]'], internal['[[timeZone]]']),
 
-    // 6. Let result be the value of the [[pattern]] internal property of dateTimeFormat.
+    // 8. Let result be the value of the dateTimeFormat.[[pattern]].
         result = internal['[[pattern]]'],
 
     // Need the locale minus any extensions
@@ -2386,7 +2425,7 @@ function FormatDateTime(dateTimeFormat, x) {
         localeData = internals.DateTimeFormat['[[localeData]]'][dataLocale].calendars,
         ca = internal['[[calendar]]'];
 
-    // 7. For each row of Table 3, except the header row, do:
+    // 9. For each row of Table 3, except the header row, do:
     for (var p in dateTimeComponents) {
         // a. If dateTimeFormat has an internal property with the name given in the
         //    Property column of the row, then:
@@ -2467,7 +2506,13 @@ function FormatDateTime(dateTimeFormat, x) {
                         break;
 
                     case 'timeZoneName':
-                        fv = ''; // TODO
+                        if (f === 'long') {
+                            fv = internal['[[timeZone]]'];
+                        } else if (f === 'short') {
+                            fv = zt.abbr(x, internal['[[timeZone]]']);
+                        } else {
+                            fv = '';
+                        }
                         break;
 
                     // TODO: Era
@@ -2512,9 +2557,8 @@ function ToLocalTime(date, calendar, timeZone) {
     //    bound by the restrictions on the use of best available information on time zones
     //    for local time zone adjustment and daylight saving time adjustment imposed by
     //    ES5, 15.9.1.7 and 15.9.1.8.
-    // ###TODO###
-    var d = new Date(date),
-        m = 'get' + (timeZone || '');
+    var d = zt(new Date(date), timeZone || 'UTC'),
+        m = 'getUTC';
 
     // 2. Return a Record with fields [[weekday]], [[era]], [[year]], [[month]], [[day]],
     //    [[hour]], [[minute]], [[second]], and [[inDST]], each with the corresponding
@@ -2528,7 +2572,7 @@ function ToLocalTime(date, calendar, timeZone) {
         '[[hour]]'   : d[m + 'Hours'](),
         '[[minute]]' : d[m + 'Minutes'](),
         '[[second]]' : d[m + 'Seconds'](),
-        '[[inDST]]'  : false // ###TODO###
+        '[[inDST]]'  : zt.dst(date, timeZone || 'UTC')
     });
 }
 

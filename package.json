@@ -67,5 +67,8 @@
   "license": "MIT",
   "bugs": {
     "url": "https://github.com/andyearnshaw/Intl.js/issues"
+  },
+  "dependencies": {
+    "zt": "bkon-connect/zt#build"
   }
 }
